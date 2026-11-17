@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "battleground-client",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "E:/battleground/client", "run", "dev", "--", "--port", "5199", "--strictPort"],
+      "port": 5199
+    },
+    {
+      "name": "revisionbot-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "E:/revisionBot", "run", "dev", "--", "--port", "5180", "--strictPort"],
+      "port": 5180
+    }
+  ]
+}

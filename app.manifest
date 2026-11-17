@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  app.manifest — Windows Application Manifest
+
+  This XML file is embedded into WINSERV.exe at build time. Windows reads it
+  before launching the process to understand what the application needs.
+
+  The critical element here is <requestedExecutionLevel level="asInvoker"/>.
+  This tells Windows: "Run this application with whatever privileges the user
+  already has — do NOT prompt for UAC elevation."
+
+  If this manifest were absent or set to "requireAdministrator", Windows would
+  show the UAC elevation prompt (the blue shield dialog), which is exactly
+  what we need to avoid on managed work/college machines.
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+
+  <assemblyIdentity
+    version="1.0.0.0"
+    processorArchitecture="X86"
+    name="WINSERV"
+    type="win32"
+  />
+
+  <description>WINSERV Local Development Server</description>
+
+  <!-- Trust-Info: declares what privilege level this application runs at. -->
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
+    <security>
+      <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
+        <!--
+          asInvoker  = run as the current user (no UAC prompt) ← we want this
+          highestAvailable = run at the highest level the user CAN get (prompts if admin)
+          requireAdministrator = always prompt for full admin (we explicitly avoid this)
+        -->
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
+  <!-- Compatibility: tells Windows which OS versions this app is designed for.
+       Without this, Windows may apply compatibility shims that change behaviour. -->
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/> <!-- Windows 10/11 -->
+      <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}"/> <!-- Windows 8.1 -->
+    </application>
+  </compatibility>
+
+
+</assembly>

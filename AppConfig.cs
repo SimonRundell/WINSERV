@@ -1,0 +1,179 @@
+// AppConfig.cs
+// ─────────────────────────────────────────────────────────────────────────────
+// Defines the shape of WINSERV's user configuration.
+//
+// This class is the "model" for config.json. When we read config.json from
+// disk, System.Text.Json maps the JSON properties directly onto the C#
+// properties in this class. When we save, it maps them back.
+//
+// C# concept — Properties:
+//   A C# property looks like a field but is actually a pair of get/set methods
+//   under the hood. The shorthand  { get; set; }  auto-generates those methods.
+//   This is idiomatic C# and is what JSON serialisers expect to find.
+//
+// C# concept — Nullable reference types (enabled in this project):
+//   With <Nullable>enable</Nullable> in the .csproj, the compiler tracks
+//   whether a reference type (string, object, etc.) can be null. A plain
+//   'string' must never be null; 'string?' is explicitly nullable.
+//   We use plain 'string' throughout here because every path has a default.
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace WINSERV;
+
+/// <summary>
+/// All user-configurable settings for WINSERV, serialised to config.json.
+/// Defaults here are the values used on a clean first run before the user
+/// has customised anything.
+/// </summary>
+public class AppConfig
+{
+    // ── Install Paths ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Root folder where PHP and MariaDB runtimes are extracted.
+    /// PHP will live at {InstallPath}\php\
+    /// MariaDB will live at {InstallPath}\mariadb\
+    /// </summary>
+    public string InstallPath { get; set; } = @"C:\WINSRV";
+
+    /// <summary>
+    /// The folder PHP's built-in web server will serve files from.
+    /// This is your "htdocs" or "www" equivalent.
+    /// </summary>
+    public string WebRoot { get; set; } = @"C:\WINSRV\webroot";
+
+    /// <summary>
+    /// Where MariaDB stores its database files (the "data directory").
+    /// This is created and initialised by WINSERV on first run.
+    /// WARNING: Do not point this at an existing MariaDB data directory
+    /// from a different installation unless you know they are compatible.
+    /// </summary>
+    public string DataDirectory { get; set; } = @"C:\WINSRV\data";
+
+    /// <summary>
+    /// Where WINSERV writes log files for PHP and MariaDB output.
+    /// </summary>
+    public string LogDirectory { get; set; } = @"C:\WINSRV\logs";
+
+    // ── Computed Paths ───────────────────────────────────────────────────────
+    //
+    // These are derived from InstallPath at runtime. We do NOT store them in
+    // JSON (JsonIgnore prevents serialisation) because they would go stale if
+    // the user moved InstallPath. They are always freshly calculated.
+    //
+    // C# concept — Expression-bodied properties:
+    //   'public string X => expression;' is shorthand for a read-only property
+    //   whose getter just returns that expression. Equivalent to:
+    //   public string X { get { return expression; } }
+
+    [Newtonsoft.Json.JsonIgnore]
+    public string PhpExePath => Path.Combine(InstallPath, "php", "php.exe");
+
+    [Newtonsoft.Json.JsonIgnore]
+    public string MariaDbExePath => Path.Combine(InstallPath, "mariadb", "bin", "mysqld.exe");
+
+    [Newtonsoft.Json.JsonIgnore]
+    public string MariaDbClientPath => Path.Combine(InstallPath, "mariadb", "bin", "mysql.exe");
+
+    [Newtonsoft.Json.JsonIgnore]
+    public string MariaDbInstallDbPath => Path.Combine(InstallPath, "mariadb", "bin", "mysql_install_db.exe");
+
+    [Newtonsoft.Json.JsonIgnore]
+    public string PhpIniPath => Path.Combine(InstallPath, "php", "php.ini");
+
+    [Newtonsoft.Json.JsonIgnore]
+    public string MariaDbMyIniPath => Path.Combine(InstallPath, "mariadb", "my.ini");
+
+    /// <summary>
+    /// Portable Node.js install. Not started/stopped by WINSERV as a service —
+    /// students invoke node/npm/npx themselves from the VS Code terminal.
+    /// </summary>
+    [Newtonsoft.Json.JsonIgnore]
+    public string NodeDirectory => Path.Combine(InstallPath, "node");
+
+    [Newtonsoft.Json.JsonIgnore]
+    public string NodeExePath => Path.Combine(InstallPath, "node", "node.exe");
+
+    [Newtonsoft.Json.JsonIgnore]
+    public string NpmCmdPath => Path.Combine(InstallPath, "node", "npm.cmd");
+
+    [Newtonsoft.Json.JsonIgnore]
+    public string NpxCmdPath => Path.Combine(InstallPath, "node", "npx.cmd");
+
+    /// <summary>
+    /// Folder for small WINSERV-generated or vendored helper scripts — currently
+    /// just the PHP router and the vendored Adminer build — parallel to the
+    /// php/mariadb/node runtime folders.
+    /// </summary>
+    [Newtonsoft.Json.JsonIgnore]
+    public string ToolsDirectory => Path.Combine(InstallPath, "tools");
+
+    /// <summary>
+    /// Router script passed to PHP's built-in server so a fixed
+    /// /adminer/adminer.php URL works no matter which project WebRoot
+    /// currently points at. Regenerated by WINSERV on every start — do not
+    /// hand-edit.
+    /// </summary>
+    [Newtonsoft.Json.JsonIgnore]
+    public string RouterPhpPath => Path.Combine(ToolsDirectory, "router.php");
+
+    /// <summary>Folder the vendored Adminer single-file build is deployed into.</summary>
+    [Newtonsoft.Json.JsonIgnore]
+    public string AdminerDirectory => Path.Combine(ToolsDirectory, "adminer");
+
+    [Newtonsoft.Json.JsonIgnore]
+    public string AdminerPhpPath => Path.Combine(AdminerDirectory, "adminer.php");
+
+    // ── Network ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// TCP port the PHP built-in web server listens on.
+    /// Must be above 1024 to avoid requiring administrator privileges.
+    /// Default 8080. Change this if another application uses 8080.
+    /// Access your site at: http://localhost:8080
+    /// </summary>
+    public int HttpPort { get; set; } = 8080;
+
+    /// <summary>
+    /// TCP port MariaDB listens on.
+    /// Defaults to 3307, not the standard 3306, because 3306 is commonly
+    /// already taken on dev machines by Laragon/XAMPP/a locally-installed
+    /// MySQL service. Binding a port already owned by another server as a
+    /// Windows Service fails with WSAEACCES rather than a clean "in use"
+    /// error, which is hard to diagnose — so we sidestep it by default.
+    /// Change this if 3307 is also taken on a given machine.
+    /// </summary>
+    public int MariaDbPort { get; set; } = 3307;
+
+    // ── Database ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The MariaDB root user's password, set during first-run initialisation.
+    ///
+    /// IMPORTANT: This is stored as plaintext in config.json. This is an
+    /// accepted trade-off for a local-only developer tool. Never store
+    /// production or sensitive credentials in this field.
+    /// </summary>
+    public string MariaDbRootPassword { get; set; } = "winserv";
+
+    // ── Application Behaviour ────────────────────────────────────────────────
+
+    /// <summary>
+    /// If true, WINSERV will automatically start PHP and MariaDB when the
+    /// application launches.
+    /// </summary>
+    public bool AutoStartServices { get; set; } = false;
+
+    /// <summary>
+    /// If true, the main window opens on startup instead of hiding to tray.
+    /// </summary>
+    public bool ShowWindowOnStartup { get; set; } = true;
+
+    // ── Runtime State ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Set to true after the first-run wizard completes successfully.
+    /// On subsequent launches, WINSERV skips the setup wizard.
+    /// </summary>
+    public bool SetupComplete { get; set; } = false;
+}

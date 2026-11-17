@@ -1,0 +1,249 @@
+﻿// TrayApplicationContext.cs
+// ─────────────────────────────────────────────────────────────────────────────
+// Manages the system tray icon and owns the application lifetime.
+//
+// C# concept — ApplicationContext:
+//   Normally you call Application.Run(form) and the app exits when that form
+//   closes. ApplicationContext is an alternative: Application.Run(context)
+//   keeps the message loop running until context.ExitThread() is called.
+//   This lets us have an app that lives in the tray with no "main window" —
+//   the tray icon IS the application's presence. We show/hide MainForm on demand.
+//
+// C# concept — NotifyIcon:
+//   NotifyIcon represents an icon in the Windows notification area (system tray).
+//   It has a ContextMenuStrip for right-click menus and can show balloon
+//   tooltip notifications. It must be explicitly disposed when the app exits
+//   or it lingers in the tray until you hover over it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace WINSERV;
+
+/// <summary>
+/// Owns the tray icon, the MainForm, and the ServiceManager.
+/// Bootstraps the application and handles first-run setup.
+/// </summary>
+public class TrayApplicationContext : ApplicationContext
+{
+    // ── Fields ────────────────────────────────────────────────────────────────
+    private readonly NotifyIcon     _trayIcon;
+    private readonly AppConfig      _config;
+    private readonly ServiceManager _services;
+    private readonly DiskLogger     _diskLogger;
+    private MainForm? _mainForm;
+
+    // ── Constructor ──────────────────────────────────────────────────────────
+
+    public TrayApplicationContext()
+    {
+        // ── Load config ───────────────────────────────────────────────────────
+        _config = ConfigManager.Load();
+
+        // ── Create service manager ────────────────────────────────────────────
+        // ServiceManager creates PhpServer and MariaDbServer but doesn't start them.
+        _services   = new ServiceManager(_config);
+        _diskLogger = new DiskLogger(_config, _services);
+
+        // ── Load application icon from embedded resource ───────────────────────
+        var appIcon = new Icon(
+            System.Reflection.Assembly.GetExecutingAssembly()
+                .GetManifestResourceStream("WINSERV.elephant.ico")!);
+
+        // ── Build tray icon ───────────────────────────────────────────────────
+        _trayIcon = new NotifyIcon
+        {
+            Icon    = appIcon,
+            Text    = "WINSERV — Local Dev Server",
+            Visible = true,
+        };
+
+        // Build the right-click context menu for the tray icon.
+        _trayIcon.ContextMenuStrip = BuildTrayMenu();
+
+        // Double-clicking the tray icon shows/hides the main window.
+        _trayIcon.DoubleClick += (s, e) => ToggleMainWindow();
+
+        // ── First-run setup (or re-deploy if runtime was deleted) ────────────
+        // SetupComplete in config only means setup ran once. If the user has
+        // since deleted the PHP/MariaDB folders we must re-run the wizard.
+        if (!_config.SetupComplete || !RuntimeInstaller.IsRuntimeExtracted(_config))
+        {
+            if (_config.SetupComplete && !RuntimeInstaller.IsRuntimeExtracted(_config))
+            {
+                // Runtime missing despite a previous successful setup — warn the user.
+                MessageBox.Show(
+                    "The PHP or MariaDB runtime files are missing from:\n\n" +
+                    $"  {_config.InstallPath}\n\n" +
+                    "The setup wizard will run again to re-deploy them.",
+                    "WINSERV — Runtime Missing",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+
+                // Reset the flag so the wizard saves cleanly on completion.
+                _config.SetupComplete = false;
+            }
+
+            RunSetupWizard();
+
+            if (!_config.SetupComplete)
+            {
+                _trayIcon.Visible = false;
+                Application.Exit();
+                return;
+            }
+        }
+
+        // ── Show main window (if configured) ──────────────────────────────────
+        if (_config.ShowWindowOnStartup)
+            ShowMainWindow();
+    }
+
+    // ── Tray Menu ─────────────────────────────────────────────────────────────
+
+    private ContextMenuStrip BuildTrayMenu()
+    {
+        var menu = new ContextMenuStrip();
+
+        // C# concept — ToolStripMenuItem:
+        //   WinForms menu items for ContextMenuStrip and MenuStrip.
+        //   Each item has a Text and a Click event handler.
+
+        var itemShow = new ToolStripMenuItem("Show Control Panel");
+        itemShow.Click += (s, e) => ShowMainWindow();
+        itemShow.Font = new Font(itemShow.Font, FontStyle.Bold); // Bold = default action
+
+        var itemStartAll = new ToolStripMenuItem("Start All Services");
+        itemStartAll.Click += async (s, e) => await _services.StartAllAsync();
+
+        var itemStopAll = new ToolStripMenuItem("Stop All Services");
+        itemStopAll.Click += async (s, e) => await _services.StopAllAsync();
+
+        var itemOpenBrowser = new ToolStripMenuItem($"Open Browser (:{_config.HttpPort})");
+        itemOpenBrowser.Click += (s, e) =>
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName        = $"http://localhost:{_config.HttpPort}",
+                UseShellExecute = true
+            });
+        };
+
+        var itemSeparator1  = new ToolStripSeparator();
+        var itemSeparator2  = new ToolStripSeparator();
+
+        var itemExit = new ToolStripMenuItem("Exit WINSERV");
+        itemExit.Click += ExitApplication;
+
+        menu.Items.AddRange(new ToolStripItem[]
+        {
+            itemShow,
+            itemSeparator1,
+            itemStartAll,
+            itemStopAll,
+            itemOpenBrowser,
+            itemSeparator2,
+            itemExit
+        });
+
+        return menu;
+    }
+
+    // ── Window Management ─────────────────────────────────────────────────────
+
+    private void ShowMainWindow()
+    {
+        // Lazy creation: only create MainForm the first time it's needed.
+        if (_mainForm == null || _mainForm.IsDisposed)
+        {
+            _mainForm = new MainForm(_config, _services);
+
+            // When MainForm is shown, update the tray tooltip with service status.
+            _services.StatusChanged += UpdateTrayTooltip;
+        }
+
+        // If already created but hidden, just bring it back.
+        _mainForm.Show();
+        _mainForm.WindowState = FormWindowState.Normal;
+
+        // BringToFront() makes the window the active foreground window.
+        _mainForm.BringToFront();
+    }
+
+    private void ToggleMainWindow()
+    {
+        if (_mainForm != null && _mainForm.Visible)
+            _mainForm.Hide();
+        else
+            ShowMainWindow();
+    }
+
+    // ── First-Run Setup ───────────────────────────────────────────────────────
+
+    private void RunSetupWizard()
+    {
+        using var wizard = new SetupWizard(_config);
+
+        // ShowDialog() blocks until the wizard closes.
+        // DialogResult.OK means the user completed setup successfully.
+        var result = wizard.ShowDialog();
+
+        if (result != DialogResult.OK)
+        {
+            // User cancelled — note that config.SetupComplete is still false,
+            // which causes the constructor to exit the application.
+        }
+    }
+
+    // ── Exit ──────────────────────────────────────────────────────────────────
+
+    private async void ExitApplication(object? sender, EventArgs e)
+    {
+        // Show a balloon tooltip while we shut down services.
+        _trayIcon.BalloonTipIcon  = ToolTipIcon.Info;
+        _trayIcon.BalloonTipTitle = "WINSERV";
+        _trayIcon.BalloonTipText  = "Stopping services...";
+        _trayIcon.ShowBalloonTip(
+            timeout: 2000,
+            tipTitle: "WINSERV",
+            tipText: "Stopping services...",
+            tipIcon: ToolTipIcon.Info
+        );
+
+        // Stop services gracefully before exiting.
+        await _services.StopAllAsync();
+
+        // Hide the tray icon. If we don't do this, the ghost icon lingers
+        // in the tray until the user hovers over it.
+        _trayIcon.Visible = false;
+        _trayIcon.Dispose();
+
+        // ExitThread() ends the ApplicationContext's message loop, which
+        // causes Application.Run() in Program.cs to return, ending the process.
+        ExitThread();
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private void UpdateTrayTooltip(object? sender, EventArgs e)
+    {
+        // NotifyIcon.Text is capped at 127 characters by Windows.
+        bool phpOk = _services.Php.IsRunning;
+        bool dbOk  = _services.MariaDb.IsRunning;
+
+        _trayIcon.Text = $"WINSERV  PHP:{(phpOk ? "▲" : "▼")}  DB:{(dbOk ? "▲" : "▼")}";
+    }
+
+    // ── Disposal ──────────────────────────────────────────────────────────────
+
+    // ApplicationContext.Dispose() is called when the application is shutting down.
+    // We override it to clean up the tray icon.
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _diskLogger.Dispose();
+            _trayIcon.Visible = false;
+            _trayIcon.Dispose();
+        }
+        base.Dispose(disposing);
+    }
+}

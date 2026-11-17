@@ -1,0 +1,16 @@
+# Build output
+bin/
+obj/
+
+# User-specific VS/MSBuild files
+*.user
+
+# Local runtime config (contains the MariaDB root password in plaintext)
+config.json
+
+# Deployment assets — large, binary, and rebuildable from BUILD.md rather
+# than tracked in source. Includes the ~180MB WINSERV-runtime.zip and any
+# loose adminer.php vendored next to it or next to WINSERV.exe.
+Deploy Resource/
+WINSERV-runtime.zip
+adminer.php

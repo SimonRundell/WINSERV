@@ -1,0 +1,92 @@
+<!--
+  WINSERV.csproj — MSBuild project file for the WINSERV application.
+
+  Targets .NET 8 and publishes self-contained + single-file in Release, so
+  `dotnet publish -c Release` produces one WINSERV.exe with the runtime
+  bundled in — no .NET install required on target machines. See BUILD.md.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <AssemblyName>WINSERV</AssemblyName>
+    <RootNamespace>WINSERV</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>elephant.ico</ApplicationIcon>
+
+    <LangVersion>latest</LangVersion>
+
+    <!-- dotnet publish (unlike build) requires this for resx files with non-string
+         resources (the embedded form icons), plus the System.Resources.Extensions
+         package below. -->
+    <GenerateResourceUsePreserializedResources>true</GenerateResourceUsePreserializedResources>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Newtonsoft.Json kept for consistency across the codebase even though
+         .NET 8 ships System.Text.Json natively. -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="System.Resources.Extensions" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="elephant.ico" />
+    <EmbeddedResource Include="test.php" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="MainForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="MainForm.Designer.cs">
+      <SubType>Designer</SubType>
+      <DependentUpon>MainForm.cs</DependentUpon>
+    </Compile>
+    <Compile Update="Properties\Resources.Designer.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+    <Compile Update="SettingsForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="SettingsForm.Designer.cs">
+      <SubType>Designer</SubType>
+      <DependentUpon>SettingsForm.cs</DependentUpon>
+    </Compile>
+    <Compile Update="SetupWizard.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="SetupWizard.Designer.cs">
+      <SubType>Designer</SubType>
+      <DependentUpon>SetupWizard.cs</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Update="Properties\Resources.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <!-- Self-contained + single-file: the .NET 8 runtime is bundled into one
+         exe, so target machines need nothing pre-installed. Debug builds stay
+         framework-dependent (no RID folder, no bundling) for fast iteration —
+         requires the .NET 8 runtime on the dev machine only. -->
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+</Project>
